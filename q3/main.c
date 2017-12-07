@@ -218,7 +218,7 @@ void *consumer(void *arg) {
 		//	update the produced matrix
 		if (wpackList[tid].jid == BODY) {
 			//	remarks, body itself consume space
-			available_space+=3;
+			available_space+=2;
 		} else {
 			available_space+=13;
 		}
