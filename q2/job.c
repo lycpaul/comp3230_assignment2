@@ -50,7 +50,7 @@ void releaseSpace(sem_t *space, int space_limit) {
 }
 
 void makeItem(sem_t *space, int makeTime, sem_t* item) {
-	usleep(100000*makeTime);
+	sleep(makeTime);
 	requestSpace(space);
 	sem_post(item);
 }
@@ -109,7 +109,7 @@ void makeCar(sem_t *sem_space, int space_limit, sem_t *sem_car,
 	
 	// assembly car by sleep ^_^
 	// notify the completion of making a car by post to sem_car
-	usleep(100000*TIME_CAR);
+	sleep(TIME_CAR);
 	sem_post(sem_car);
 }
 

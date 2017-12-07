@@ -51,7 +51,7 @@ void releaseSpace(sem_t *space, int space_limit) {
 }
 
 void makeItem(sem_t *space, int makeTime, sem_t* item) {
-	usleep(100000*makeTime);
+	usleep(10000*makeTime);
 	// sleep(makeTime);
 	requestSpace(space);
 	sem_post(item);
@@ -61,7 +61,6 @@ int getItem(sem_t *space, int space_limit, sem_t *item) {
 	int rv = sem_trywait(item);
 	if (rv==0) {
 		releaseSpace(space, space_limit);
-		printf("I got the item\n");
 		return 1;
 	} else {
 		return 0;
@@ -96,7 +95,7 @@ void makeBattery(sem_t *sem_space, sem_t *sem_battery ) {
 void makeBody(sem_t *sem_space, int space_limit, sem_t *sem_body,
 		sem_t *sem_skeleton, sem_t *sem_engine, sem_t *sem_chassis) {
 	//	making the assembly work more flexible
-	//	locking for all required components instead of blocking by particlar component
+	//	locking for all required components instead of being blocked by particlar component
 	int getS=0, getE=0, getC=0;
 	while ((getS+getE+getC)<3) {
 		if (getS<1)
@@ -113,7 +112,7 @@ void makeCar(sem_t *sem_space, int space_limit, sem_t *sem_car,
 		sem_t *sem_window, sem_t *sem_tire, sem_t *sem_battery, sem_t *sem_body) {
 		
 	//	making the assembly work more flexible
-	//	locking for all required components instead of blocking by particlar component
+	//	locking for all required components instead of being blocked by particlar component
 	int getW=0, getT=0, getBt=0, getBd=0;
 	while ((getW+getT+getBt+getBd)<13) {
 		if (getW<7)
@@ -126,7 +125,7 @@ void makeCar(sem_t *sem_space, int space_limit, sem_t *sem_car,
 			getBd += getItem(sem_space, space_limit, sem_body);
 	}
 
-	usleep(100000*TIME_CAR);
+	usleep(10000*TIME_CAR);
 	//	sleep(TIME_CAR);
 	sem_post(sem_car);
 }
