@@ -51,8 +51,8 @@ void releaseSpace(sem_t *space, int space_limit) {
 }
 
 void makeItem(sem_t *space, int makeTime, sem_t* item) {
-	usleep(10000*makeTime);
-	// sleep(makeTime);
+	usleep(100000*makeTime);
+	//sleep(makeTime);
 	requestSpace(space);
 	sem_post(item);
 }
@@ -125,8 +125,8 @@ void makeCar(sem_t *sem_space, int space_limit, sem_t *sem_car,
 			getBd += getItem(sem_space, space_limit, sem_body);
 	}
 
-	usleep(10000*TIME_CAR);
-	//	sleep(TIME_CAR);
+	usleep(100000*TIME_CAR);
+	//sleep(TIME_CAR);
 	sem_post(sem_car);
 }
 
