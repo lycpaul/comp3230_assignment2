@@ -54,21 +54,21 @@ void *producer(void *arg) {
 	while(true) {
 		//	block the producer to assign new worker, untill space is released by consumer
 		sem_wait(&available);
-		if(finishedProduction()) break;
 		pthread_mutex_lock(&mutex);	/*enter the critical session*/
+		
+		//	check production stage
+		if(finishedProduction()) {
+			pthread_mutex_unlock(&mutex);
+			sem_post(&full);	/* wake up consumer, make sure he can leave*/
+			break;
+		}
 		
 		#if DEBUG
 		printf("=-=-=-=-=-=Producer enter critical session=-=-=-=-=-=\n");
 		#endif
 		
-		//	prepare forn new work pack
-		wpackList[tid].resource = rpack;
-		wpackList[tid].tid = tid;
-		wpackList[tid].jid = jobList[jid];
-		wpackList[tid].times = timesList[jid];
-		
 		//	check if have enough space, if not, call the consumer to free up some space
-		if (available_space <= wpackList[tid].times) {
+		if (available_space <= timesList[jid]) {
 			#if DEBUG
 			printf("Producer running out of space, wake consumer up\n");
 			#endif
@@ -83,7 +83,7 @@ void *producer(void *arg) {
 		   || (allocated[SKELETON]   >= (1+allocated[BODY])
 		   		&& allocated[ENGINE] >= (1+allocated[BODY])
 		   		&& allocated[CHASSIS]>= (1+allocated[BODY]))
-		   		)
+		   	)
    		{
 			// check if we can assembly BODY or CAR, call the consumer to do this
 			#if DEBUG
@@ -94,6 +94,20 @@ void *producer(void *arg) {
 			continue;
 		}
 		else sem_post(&available); /*continue producer task*/
+	
+		//	before assigning this tid, make sure it is free
+		if (assignedAllThreads) { 
+			#if DEBUG
+			printf("Producer waiting old thread joint\n");
+			#endif
+			pthread_join(threads[tid], NULL);
+		}
+		
+		//	prepare for new work pack
+		wpackList[tid].resource = rpack;
+		wpackList[tid].tid = tid;
+		wpackList[tid].jid = jobList[jid];
+		wpackList[tid].times = timesList[jid];
 		
 		//	update the produced matrix
 		allocated[wpackList[tid].jid] += wpackList[tid].times;
@@ -103,14 +117,6 @@ void *producer(void *arg) {
 		printf("allocated matrix: %d %d %d %d\n", allocated[4],allocated[5],allocated[6],allocated[7]);
 		printf("Available_space: %d\n", available_space);
 		#endif
-		
-		//	before assigning this tid, make sure it is free
-		if (assignedAllThreads) { 
-			#if DEBUG
-			printf("Producer waiting old thread joint\n");
-			#endif
-			pthread_join(threads[tid], NULL);
-		}
 		
 		//	requesting for a worker
 		sem_wait(&sem_worker);
@@ -122,29 +128,38 @@ void *producer(void *arg) {
 		pthread_create(&threads[tid], NULL, work, (void *)&wpackList[tid]);
 		
 		//	update variables
-		if (++tid == num_workers) {
+		if (++tid >= num_workers) {
 			assignedAllThreads = true;
 			tid %= num_workers;
 		}
 		jid = (jid+1)%8;
 		
-		
-		pthread_mutex_unlock(&mutex);	/*leave the critical session*/
-		
 		//	check production stage
-		if(finishedProduction()) break;
+		if(finishedProduction()) {
+			pthread_mutex_unlock(&mutex);
+			break;
+		}
+		pthread_mutex_unlock(&mutex);	/*leave the critical session*/
 	}
-	#if DEBUG
-	printf("leaving producer thread\n");
-	#endif
 	//	join all threads before levaing
 	if (assignedAllThreads) {
-		for (int i=0; i<num_workers; i++)
+		for (int i=0; i<num_workers; i++) {
 			pthread_join(threads[i], NULL);
+			#if DEBUG
+			printf("Producer joined thread: %d\n", i);
+			#endif
+		}
 	} else {
-		for (int i=0; i<tid; i++)
+		for (int i=0; i<tid; i++) {
 			pthread_join(threads[i], NULL);
+			#if DEBUG
+			printf("Producer joined thread: %d\n", i);
+			#endif
+		}
 	}
+	#if DEBUG
+	printf("Leaving producer thread\n");
+	#endif
 	pthread_exit(0);
 }
 
@@ -161,13 +176,16 @@ void *consumer(void *arg) {
 	
 	while(true) {
 		//	wait untill the producer wake me up
-		sem_wait(&full);
+		sem_wait(&full);		
+		pthread_mutex_lock(&mutex);	/*enter the critical session*/
+		if(finishedProduction()) {
+			pthread_mutex_unlock(&mutex);
+			break;
+		}
 		
 		#if DEBUG
 		printf("=-=-=-=-=-=Consumer enter critical session=-=-=-=-=-=\n");
 		#endif
-		
-		pthread_mutex_lock(&mutex);	/*enter the critical session*/
 		
 		//	Ensure finished previous job
 		if (assignedAllThreads) { 
@@ -196,11 +214,14 @@ void *consumer(void *arg) {
 
 		//	update the produced matrix
 		if (wpackList[tid].jid == BODY) {
-			available_space += allocated[SKELETON]+allocated[ENGINE]+allocated[CHASSIS]-3*(allocated[BODY])-1;	//	remarks, body itself consume space
+			int inc = allocated[SKELETON]+allocated[ENGINE]+allocated[CHASSIS]-3*(allocated[BODY]);
+			//	remarks, body itself consume space
+			available_space += inc==3? 2:inc;
 		} else {
 			available_space += allocated[BODY]+allocated[WINDOW]+allocated[TIRE]+allocated[BATTERY]-13*allocated[CAR];
 		}
 		allocated[wpackList[tid].jid] += wpackList[tid].times;
+		
 		#if DEBUG
 		printf("allocated matrix: %d %d %d %d\n", allocated[0],allocated[1],allocated[2],allocated[3]);
 		printf("allocated matrix: %d %d %d %d\n", allocated[4],allocated[5],allocated[6],allocated[7]);
@@ -217,30 +238,40 @@ void *consumer(void *arg) {
 		pthread_create(&threads[tid], NULL, work, (void*)&wpackList[tid]);
 		
 		//	update variables
-		if (++tid == num_workers) {
+		if (++tid >= num_workers) {
 			assignedAllThreads = true;
 			tid %= num_workers;
 		}
 		
 		//	space is freed automatically after the thread return,
 		//	now wake up the producer
+		if(finishedProduction()) {
+			pthread_mutex_unlock(&mutex);
+			sem_post(&available);
+			break;
+		}
 		pthread_mutex_unlock(&mutex);	/*leave the critical session*/
 		sem_post(&available);	/* wake up consumer */
-		//	check production stage
-		if(finishedProduction()) break;
 	}
-	#if DEBUG
-	printf("leaving consumer thread\n");
-	#endif
 	//	join all threads before levaing
 	if (assignedAllThreads) {
-		for (int i=0; i<num_workers; i++)
+		for (int i=0; i<num_workers; i++) {
 			pthread_join(threads[i], NULL);
+			#if DEBUG
+			printf("Consumer joined thread: %d\n", i);
+			#endif
+		}
 	} else {
-		for (int i=0; i<tid; i++)
+		for (int i=0; i<tid; i++) {
 			pthread_join(threads[i], NULL);
+			#if DEBUG
+			printf("Consumer joined thread: %d\n", i);
+			#endif
+		}
 	}
-	
+	#if DEBUG
+	printf("Leaving consumer thread\n");
+	#endif
 	pthread_exit(0);
 }
 
